@@ -89,6 +89,7 @@ export class IntegrationManager {
           isChromeExtension: !!p.isChromeExtension,
           ...(p.extensionCookies ? { extensionCookies: p.extensionCookies } : {}),
           ...(p.customFields ? { customFields: await p.customFields() } : {}),
+          ...(p.oauthCustomFields ? { oauthCustomFields: await p.oauthCustomFields() } : {}),
         }))
       ),
       article: [] as any[],

@@ -219,6 +219,8 @@ export class PublicIntegrationsController {
   async getIntegrationUrl(
     @Param('integration') integration: string,
     @Query('refresh') refresh: string,
+    @Query('customClientId') customClientId: string,
+    @Query('customClientSecret') customClientSecret: string,
     @GetOrgFromRequest() org: Organization
   ) {
     Sentry.metrics.count('public_api-request', 1);
@@ -241,11 +243,19 @@ export class PublicIntegrationsController {
     }
 
     try {
+      const clientInformation = customClientId && customClientSecret
+        ? { client_id: customClientId, client_secret: customClientSecret, instanceUrl: '' }
+        : undefined;
+
       const { codeVerifier, state, url } =
-        await integrationProvider.generateAuthUrl();
+        await integrationProvider.generateAuthUrl(clientInformation);
 
       if (refresh) {
         await ioRedis.set(`refresh:${state}`, refresh, 'EX', 3600);
+      }
+
+      if (clientInformation) {
+        await ioRedis.set(`external:${state}`, JSON.stringify(clientInformation), 'EX', 3600);
       }
 
       await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);

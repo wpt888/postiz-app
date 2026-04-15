@@ -2,6 +2,7 @@ import { TweetV2, TwitterApi } from 'twitter-api-v2';
 import {
   AnalyticsData,
   AuthTokenDetails,
+  ClientInformation,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -19,6 +20,7 @@ import { uniqBy } from 'lodash';
 import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validation';
 import { XDto } from '@gitroom/nestjs-libraries/dtos/posts/providers-settings/x.dto';
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
 @Rules(
   'X can have maximum 4 pictures, or maximum one video, it can also be without attachments'
@@ -37,6 +39,23 @@ export class XProvider extends SocialAbstract implements SocialProvider {
 
   maxLength(isTwitterPremium: boolean) {
     return isTwitterPremium ? 4000 : 200;
+  }
+
+  async oauthCustomFields() {
+    return [
+      {
+        key: 'client_id',
+        label: 'X API Key',
+        validation: '',
+        type: 'text' as const,
+      },
+      {
+        key: 'client_secret',
+        label: 'X API Secret',
+        validation: '',
+        type: 'password' as const,
+      },
+    ];
   }
 
   override handleErrors(body: string):
@@ -110,10 +129,11 @@ export class XProvider extends SocialAbstract implements SocialProvider {
   ) {
     // @ts-ignore
     // eslint-disable-next-line prefer-rest-params
+    const creds = this.extractCredentials(integration);
     const [accessTokenSplit, accessSecretSplit] = integration.token.split(':');
     const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
+      appKey: creds.apiKey,
+      appSecret: creds.apiSecret,
       accessToken: accessTokenSplit,
       accessSecret: accessSecretSplit,
     });
@@ -143,10 +163,11 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     postId: string,
     information: any
   ) {
+    const creds = this.extractCredentials(integration);
     const [accessTokenSplit, accessSecretSplit] = integration.token.split(':');
     const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
+      appKey: creds.apiKey,
+      appSecret: creds.apiSecret,
       accessToken: accessTokenSplit,
       accessSecret: accessSecretSplit,
     });
@@ -194,10 +215,11 @@ export class XProvider extends SocialAbstract implements SocialProvider {
   ) {
     // @ts-ignore
     // eslint-disable-next-line prefer-rest-params
+    const creds = this.extractCredentials(integration);
     const [accessTokenSplit, accessSecretSplit] = integration.token.split(':');
     const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
+      appKey: creds.apiKey,
+      appSecret: creds.apiSecret,
       accessToken: accessTokenSplit,
       accessSecret: accessSecretSplit,
     });
@@ -230,10 +252,13 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async generateAuthUrl() {
+  async generateAuthUrl(clientInformation?: ClientInformation) {
+    const apiKey = clientInformation?.client_id || process.env.X_API_KEY!;
+    const apiSecret = clientInformation?.client_secret || process.env.X_API_SECRET!;
+
     const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
+      appKey: apiKey,
+      appSecret: apiSecret,
     });
     const { url, oauth_token, oauth_token_secret } =
       await client.generateAuthLink(
@@ -252,13 +277,19 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async authenticate(params: { code: string; codeVerifier: string }) {
+  async authenticate(
+    params: { code: string; codeVerifier: string },
+    clientInformation?: ClientInformation
+  ) {
+    const apiKey = clientInformation?.client_id || process.env.X_API_KEY!;
+    const apiSecret = clientInformation?.client_secret || process.env.X_API_SECRET!;
+
     const { code, codeVerifier } = params;
     const [oauth_token, oauth_token_secret] = codeVerifier.split(':');
 
     const startingClient = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
+      appKey: apiKey,
+      appSecret: apiSecret,
       accessToken: oauth_token,
       accessSecret: oauth_token_secret,
     });
@@ -298,14 +329,28 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  private async getClient(accessToken: string) {
+  private async getClient(accessToken: string, integration?: Integration) {
     const [accessTokenSplit, accessSecretSplit] = accessToken.split(':');
+    const creds = this.extractCredentials(integration);
     return new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
+      appKey: creds.apiKey,
+      appSecret: creds.apiSecret,
       accessToken: accessTokenSplit,
       accessSecret: accessSecretSplit,
     });
+  }
+
+  private extractCredentials(integration?: Integration) {
+    if (integration?.customInstanceDetails) {
+      try {
+        const decrypted = AuthService.fixedDecryption(integration.customInstanceDetails);
+        const parsed = JSON.parse(decrypted);
+        if (parsed.client_id && parsed.client_secret) {
+          return { apiKey: parsed.client_id, apiSecret: parsed.client_secret };
+        }
+      } catch {}
+    }
+    return { apiKey: process.env.X_API_KEY!, apiSecret: process.env.X_API_SECRET! };
   }
 
   private async uploadMedia(
@@ -368,9 +413,10 @@ export class XProvider extends SocialAbstract implements SocialProvider {
         | 'verified';
       made_with_ai?: boolean;
       paid_partnership?: boolean;
-    }>[]
+    }>[],
+    integration?: Integration
   ): Promise<PostResponse[]> {
-    const client = await this.getClient(accessToken);
+    const client = await this.getClient(accessToken, integration);
     const {
       data: { username },
     } = await this.runInConcurrent(async () =>
@@ -434,7 +480,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     }>[],
     integration: Integration
   ): Promise<PostResponse[]> {
-    const client = await this.getClient(accessToken);
+    const client = await this.getClient(accessToken, integration);
     const {
       data: { username },
     } = await this.runInConcurrent(async () =>
@@ -521,13 +567,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
     const until = dayjs().endOf('day');
     const since = dayjs().subtract(date > 100 ? 100 : date, 'day');
 
-    const [accessTokenSplit, accessSecretSplit] = accessToken.split(':');
-    const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
-      accessToken: accessTokenSplit,
-      accessSecret: accessSecretSplit,
-    });
+    const client = await this.getClient(accessToken);
 
     try {
       const tweets = uniqBy(
@@ -611,13 +651,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
 
     const today = dayjs().format('YYYY-MM-DD');
 
-    const [accessTokenSplit, accessSecretSplit] = accessToken.split(':');
-    const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
-      accessToken: accessTokenSplit,
-      accessSecret: accessSecretSplit,
-    });
+    const client = await this.getClient(accessToken);
 
     try {
       // Fetch the specific tweet with public metrics
@@ -690,13 +724,7 @@ export class XProvider extends SocialAbstract implements SocialProvider {
   }
 
   override async mention(token: string, d: { query: string }) {
-    const [accessTokenSplit, accessSecretSplit] = token.split(':');
-    const client = new TwitterApi({
-      appKey: process.env.X_API_KEY!,
-      appSecret: process.env.X_API_SECRET!,
-      accessToken: accessTokenSplit,
-      accessSecret: accessSecretSplit,
-    });
+    const client = await this.getClient(token);
 
     try {
       const data = await client.v2.userByUsername(d.query, {

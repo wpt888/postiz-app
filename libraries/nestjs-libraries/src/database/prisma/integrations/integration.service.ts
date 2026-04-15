@@ -9,8 +9,10 @@ import { IntegrationRepository } from '@gitroom/nestjs-libraries/database/prisma
 import { IntegrationManager } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 import {
   AnalyticsData,
+  ClientInformation,
   SocialProvider,
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { Integration, Organization } from '@prisma/client';
 import { NotificationService } from '@gitroom/nestjs-libraries/database/prisma/notifications/notification.service';
 import dayjs from 'dayjs';
@@ -165,10 +167,22 @@ export class IntegrationService {
     return this._integrationRepository.getIntegrationById(org, id);
   }
 
-  async refreshToken(provider: SocialProvider, refresh: string) {
+  private getClientInformation(integration: Integration): ClientInformation | undefined {
+    if (!integration.customInstanceDetails) {
+      return undefined;
+    }
+    try {
+      const decrypted = AuthService.fixedDecryption(integration.customInstanceDetails);
+      return JSON.parse(decrypted) as ClientInformation;
+    } catch {
+      return undefined;
+    }
+  }
+
+  async refreshToken(provider: SocialProvider, refresh: string, clientInformation?: ClientInformation) {
     try {
       const { refreshToken, accessToken, expiresIn } =
-        await provider.refreshToken(refresh);
+        await provider.refreshToken(refresh, clientInformation);
 
       if (!refreshToken || !accessToken || !expiresIn) {
         return false;
@@ -215,7 +229,8 @@ export class IntegrationService {
         integration.providerIdentifier
       );
 
-      const data = await this.refreshToken(provider, integration.refreshToken!);
+      const clientInformation = this.getClientInformation(integration);
+      const data = await this.refreshToken(provider, integration.refreshToken!, clientInformation);
 
       if (!data) {
         await this.informAboutRefreshError(

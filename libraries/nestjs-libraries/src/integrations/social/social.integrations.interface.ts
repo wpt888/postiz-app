@@ -14,7 +14,7 @@ export interface IAuthenticator {
     },
     clientInformation?: ClientInformation
   ): Promise<AuthTokenDetails | string>;
-  refreshToken(refreshToken: string): Promise<AuthTokenDetails>;
+  refreshToken(refreshToken: string, clientInformation?: ClientInformation): Promise<AuthTokenDetails>;
   reConnect?(
     id: string,
     requiredId: string,
@@ -149,6 +149,15 @@ export interface SocialProvider
   extensionCookies?: { name: string; domain: string }[];
   editor: 'none' | 'normal' | 'markdown' | 'html';
   customFields?: () => Promise<
+    {
+      key: string;
+      label: string;
+      defaultValue?: string;
+      validation: string;
+      type: 'text' | 'password';
+    }[]
+  >;
+  oauthCustomFields?: () => Promise<
     {
       key: string;
       label: string;

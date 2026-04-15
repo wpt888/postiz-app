@@ -51,6 +51,8 @@ export class EnterpriseController {
         refreshId?: string;
         provider: string;
         webhookUrl: string;
+        customClientId?: string;
+        customClientSecret?: string;
       };
 
       if (!load || !load.redirectUrl || !load.apiKey || !load.provider) {
@@ -75,11 +77,19 @@ export class EnterpriseController {
         load.provider
       );
 
+      const clientInformation = load.customClientId && load.customClientSecret
+        ? { client_id: load.customClientId, client_secret: load.customClientSecret, instanceUrl: '' }
+        : undefined;
+
       const { codeVerifier, state, url } =
-        await integrationProvider.generateAuthUrl();
+        await integrationProvider.generateAuthUrl(clientInformation);
 
       if (load.refreshId) {
         await ioRedis.set(`refresh:${state}`, load.refreshId, 'EX', 3600);
+      }
+
+      if (clientInformation) {
+        await ioRedis.set(`external:${state}`, JSON.stringify(clientInformation), 'EX', 3600);
       }
 
       await ioRedis.set(`webhookUrl:${state}`, load.webhookUrl, 'EX', 3600);

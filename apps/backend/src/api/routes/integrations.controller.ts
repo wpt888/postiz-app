@@ -22,7 +22,7 @@ import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/po
 import { IntegrationTimeDto } from '@gitroom/nestjs-libraries/dtos/integrations/integration.time.dto';
 import { PlugDto } from '@gitroom/nestjs-libraries/dtos/plugs/plug.dto';
 import { RefreshToken } from '@gitroom/nestjs-libraries/integrations/social.abstract';
-
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { timer } from '@gitroom/helpers/utils/timer';
 import { TelegramProvider } from '@gitroom/nestjs-libraries/integrations/social/telegram.provider';
 import { MoltbookProvider } from '@gitroom/nestjs-libraries/integrations/social/moltbook.provider';
@@ -108,6 +108,9 @@ export class IntegrationsController {
             isCustomFields: !!findIntegration.customFields,
             ...(findIntegration.customFields
               ? { customFields: await findIntegration.customFields() }
+              : {}),
+            ...(findIntegration.oauthCustomFields
+              ? { oauthCustomFields: await findIntegration.oauthCustomFields() }
               : {}),
             display: p.profile,
             type: p.type,
@@ -196,6 +199,8 @@ export class IntegrationsController {
     @Query('refresh') refresh: string,
     @Query('externalUrl') externalUrl: string,
     @Query('onboarding') onboarding: string,
+    @Query('customClientId') customClientId: string,
+    @Query('customClientSecret') customClientSecret: string,
     @GetOrgFromRequest() org: Organization
   ) {
     if (
@@ -214,11 +219,34 @@ export class IntegrationsController {
     }
 
     try {
+      // When reconnecting, recover stored custom OAuth credentials from the existing integration
+      let storedClientInfo: { client_id: string; client_secret: string; instanceUrl: string } | undefined;
+      if (refresh && !customClientId && integrationProvider.oauthCustomFields) {
+        const integrations = await this._integrationService.getIntegrationsList(org.id);
+        const existing = integrations.find(
+          (i) => i.internalId === refresh && i.providerIdentifier === integration
+        );
+        if (existing?.customInstanceDetails) {
+          try {
+            const decrypted = AuthService.fixedDecryption(existing.customInstanceDetails);
+            storedClientInfo = JSON.parse(decrypted);
+          } catch {}
+        }
+      }
+
       const getExternalUrl = integrationProvider.externalUrl
         ? {
             ...(await integrationProvider.externalUrl(externalUrl)),
             instanceUrl: externalUrl,
           }
+        : customClientId && customClientSecret
+        ? {
+            client_id: customClientId,
+            client_secret: customClientSecret,
+            instanceUrl: '',
+          }
+        : storedClientInfo?.client_id && storedClientInfo?.client_secret
+        ? storedClientInfo
         : undefined;
 
       const { codeVerifier, state, url } =
@@ -234,12 +262,14 @@ export class IntegrationsController {
 
       await ioRedis.set(`organization:${state}`, org.id, 'EX', 3600);
       await ioRedis.set(`login:${state}`, codeVerifier, 'EX', 3600);
-      await ioRedis.set(
-        `external:${state}`,
-        JSON.stringify(getExternalUrl),
-        'EX',
-        3600
-      );
+      if (getExternalUrl) {
+        await ioRedis.set(
+          `external:${state}`,
+          JSON.stringify(getExternalUrl),
+          'EX',
+          3600
+        );
+      }
 
       return { url };
     } catch (err) {

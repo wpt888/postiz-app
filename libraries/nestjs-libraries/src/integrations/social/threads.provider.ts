@@ -1,6 +1,7 @@
 import {
   AnalyticsData,
   AuthTokenDetails,
+  ClientInformation,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -31,6 +32,23 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
   editor = 'normal' as const;
   maxLength() {
     return 500;
+  }
+
+  async oauthCustomFields() {
+    return [
+      {
+        key: 'client_id',
+        label: 'Threads App ID',
+        validation: '',
+        type: 'text' as const,
+      },
+      {
+        key: 'client_secret',
+        label: 'Threads App Secret',
+        validation: '',
+        type: 'password' as const,
+      },
+    ];
   }
 
   override handleErrors(body: string):
@@ -76,12 +94,13 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async generateAuthUrl() {
+  async generateAuthUrl(clientInformation?: ClientInformation) {
+    const appId = clientInformation?.client_id || process.env.THREADS_APP_ID;
     const state = makeId(6);
     return {
       url:
         'https://www.threads.net/oauth/authorize' +
-        `?client_id=${process.env.THREADS_APP_ID}` +
+        `?client_id=${appId}` +
         `&redirect_uri=${encodeURIComponent(
           `${
             process?.env.FRONTEND_URL?.indexOf('https') == -1
@@ -96,15 +115,21 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async authenticate(params: {
-    code: string;
-    codeVerifier: string;
-    refresh?: string;
-  }) {
+  async authenticate(
+    params: {
+      code: string;
+      codeVerifier: string;
+      refresh?: string;
+    },
+    clientInformation?: ClientInformation
+  ) {
+    const appId = clientInformation?.client_id || process.env.THREADS_APP_ID;
+    const appSecret = clientInformation?.client_secret || process.env.THREADS_APP_SECRET;
+
     const getAccessToken = await (
       await this.fetch(
         'https://graph.threads.net/oauth/access_token' +
-          `?client_id=${process.env.THREADS_APP_ID}` +
+          `?client_id=${appId}` +
           `&redirect_uri=${encodeURIComponent(
             `${
               process?.env.FRONTEND_URL?.indexOf('https') == -1
@@ -113,7 +138,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
             }/integrations/social/threads`
           )}` +
           `&grant_type=authorization_code` +
-          `&client_secret=${process.env.THREADS_APP_SECRET}` +
+          `&client_secret=${appSecret}` +
           `&code=${params.code}`
       )
     ).json();
@@ -122,7 +147,7 @@ export class ThreadsProvider extends SocialAbstract implements SocialProvider {
       await this.fetch(
         'https://graph.threads.net/access_token' +
           '?grant_type=th_exchange_token' +
-          `&client_secret=${process.env.THREADS_APP_SECRET}` +
+          `&client_secret=${appSecret}` +
           `&access_token=${getAccessToken.access_token}`
       )
     ).json();

@@ -251,6 +251,69 @@ export const CustomVariables: FC<{
     </div>
   );
 };
+const OAuthCustomCredentials: FC<{
+  identifier: string;
+  variables: Array<{
+    key: string;
+    label: string;
+    type: 'text' | 'password';
+  }>;
+  onSubmit: (credentials: { customClientId: string; customClientSecret: string }) => void;
+  onSkip: () => void;
+}> = ({ variables, onSubmit, onSkip }) => {
+  const methods = useForm();
+  const t = useT();
+
+  const submit = useCallback(
+    (data: FieldValues) => {
+      onSubmit({
+        customClientId: data.client_id || '',
+        customClientSecret: data.client_secret || '',
+      });
+    },
+    [onSubmit]
+  );
+
+  return (
+    <div className="rounded-[4px] relative">
+      <p className="text-[14px] text-textColor/80 pb-[10px]">
+        {t(
+          'oauth_custom_credentials_desc',
+          'You can use your own OAuth app credentials instead of the default ones. Leave empty to use defaults.'
+        )}
+      </p>
+      <FormProvider {...methods}>
+        <form
+          className="gap-[8px] flex flex-col"
+          onSubmit={methods.handleSubmit(submit)}
+        >
+          {variables.map((variable) => (
+            <div key={variable.key}>
+              <Input
+                label={variable.label}
+                name={variable.key}
+                type={variable.type === 'text' ? 'text' : 'password'}
+              />
+            </div>
+          ))}
+          <div className="flex gap-[10px] mt-[8px]">
+            <Button type="submit" className="flex-1">
+              {t('connect_with_custom', 'Connect')}
+            </Button>
+            <Button
+              type="button"
+              className="flex-1 !bg-transparent border border-tableBorder text-textColor"
+              onClick={onSkip}
+            >
+              {t('use_defaults', 'Use Defaults')}
+            </Button>
+          </div>
+        </form>
+      </FormProvider>
+    </div>
+  );
+};
+
 const ExtensionNotFound: FC = () => {
   const modals = useModals();
   const t = useT();
@@ -372,6 +435,12 @@ export const AddProviderComponent: FC<{
       validation: string;
       type: 'text' | 'password';
     }>;
+    oauthCustomFields?: Array<{
+      key: string;
+      label: string;
+      validation: string;
+      type: 'text' | 'password';
+    }>;
   }>;
   article: Array<{
     identifier: string;
@@ -399,6 +468,12 @@ export const AddProviderComponent: FC<{
           label: string;
           validation: string;
           defaultValue?: string;
+          type: 'text' | 'password';
+        }>,
+        oauthCustomFields?: Array<{
+          key: string;
+          label: string;
+          validation: string;
           type: 'text' | 'password';
         }>
       ) =>
@@ -434,9 +509,11 @@ export const AddProviderComponent: FC<{
           });
           return;
         };
-        const gotoIntegration = async (externalUrl?: string) => {
+        const gotoIntegration = async (externalUrl?: string, customCreds?: { customClientId: string; customClientSecret: string }) => {
           const params = [
             externalUrl ? `externalUrl=${externalUrl}` : '',
+            customCreds?.customClientId ? `customClientId=${encodeURIComponent(customCreds.customClientId)}` : '',
+            customCreds?.customClientSecret ? `customClientSecret=${encodeURIComponent(customCreds.customClientSecret)}` : '',
             onboardingParam,
           ]
             .filter(Boolean)
@@ -640,7 +717,8 @@ export const AddProviderComponent: FC<{
                   item.isExternal,
                   item.isWeb3,
                   item.isChromeExtension,
-                  item.customFields
+                  item.customFields,
+                  item.oauthCustomFields
                 )}
                 {...(!!item.toolTip
                   ? {

@@ -1,6 +1,7 @@
 import {
   AnalyticsData,
   AuthTokenDetails,
+  ClientInformation,
   PostDetails,
   PostResponse,
   SocialProvider,
@@ -19,11 +20,13 @@ import dayjs from 'dayjs';
 import { GaxiosResponse } from 'gaxios/build/src/common';
 import Schema$Video = youtube_v3.Schema$Video;
 import { Rules } from '@gitroom/nestjs-libraries/chat/rules.description.decorator';
+import { Integration } from '@prisma/client';
+import { AuthService } from '@gitroom/helpers/auth/auth.service';
 
-const clientAndYoutube = () => {
+const clientAndYoutube = (overrides?: { clientId?: string; clientSecret?: string }) => {
   const client = new google.auth.OAuth2({
-    clientId: process.env.YOUTUBE_CLIENT_ID,
-    clientSecret: process.env.YOUTUBE_CLIENT_SECRET,
+    clientId: overrides?.clientId || process.env.YOUTUBE_CLIENT_ID,
+    clientSecret: overrides?.clientSecret || process.env.YOUTUBE_CLIENT_SECRET,
     redirectUri: `${process.env.FRONTEND_URL}/integrations/social/youtube`,
   });
 
@@ -69,6 +72,36 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
   editor = 'normal' as const;
   maxLength() {
     return 5000;
+  }
+
+  private extractOverrides(integration?: Integration): { clientId?: string; clientSecret?: string } | undefined {
+    if (integration?.customInstanceDetails) {
+      try {
+        const decrypted = AuthService.fixedDecryption(integration.customInstanceDetails);
+        const parsed = JSON.parse(decrypted);
+        if (parsed.client_id && parsed.client_secret) {
+          return { clientId: parsed.client_id, clientSecret: parsed.client_secret };
+        }
+      } catch {}
+    }
+    return undefined;
+  }
+
+  async oauthCustomFields() {
+    return [
+      {
+        key: 'client_id',
+        label: 'YouTube Client ID',
+        validation: '',
+        type: 'text' as const,
+      },
+      {
+        key: 'client_secret',
+        label: 'YouTube Client Secret',
+        validation: '',
+        type: 'password' as const,
+      },
+    ];
   }
 
   override handleErrors(body: string):
@@ -135,8 +168,10 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     return undefined;
   }
 
-  async refreshToken(refresh_token: string): Promise<AuthTokenDetails> {
-    const { client, oauth2 } = clientAndYoutube();
+  async refreshToken(refresh_token: string, clientInformation?: ClientInformation): Promise<AuthTokenDetails> {
+    const { client, oauth2 } = clientAndYoutube(
+      clientInformation ? { clientId: clientInformation.client_id, clientSecret: clientInformation.client_secret } : undefined
+    );
     client.setCredentials({ refresh_token });
     const { credentials } = await client.refreshAccessToken();
     const user = oauth2(client);
@@ -158,9 +193,11 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async generateAuthUrl() {
+  async generateAuthUrl(clientInformation?: ClientInformation) {
     const state = makeId(7);
-    const { client } = clientAndYoutube();
+    const { client } = clientAndYoutube(
+      clientInformation ? { clientId: clientInformation.client_id, clientSecret: clientInformation.client_secret } : undefined
+    );
     return {
       url: client.generateAuthUrl({
         access_type: 'offline',
@@ -174,12 +211,17 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
     };
   }
 
-  async authenticate(params: {
-    code: string;
-    codeVerifier: string;
-    refresh?: string;
-  }) {
-    const { client, oauth2 } = clientAndYoutube();
+  async authenticate(
+    params: {
+      code: string;
+      codeVerifier: string;
+      refresh?: string;
+    },
+    clientInformation?: ClientInformation
+  ) {
+    const { client, oauth2 } = clientAndYoutube(
+      clientInformation ? { clientId: clientInformation.client_id, clientSecret: clientInformation.client_secret } : undefined
+    );
     const { tokens } = await client.getToken(params.code);
     client.setCredentials(tokens);
     const { scopes } = await client.getTokenInfo(tokens.access_token!);
@@ -293,11 +335,12 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
   async post(
     id: string,
     accessToken: string,
-    postDetails: PostDetails[]
+    postDetails: PostDetails[],
+    integration?: Integration
   ): Promise<PostResponse[]> {
     const [firstPost, ...comments] = postDetails;
 
-    const { client, youtube } = clientAndYoutube();
+    const { client, youtube } = clientAndYoutube(this.extractOverrides(integration));
     client.setCredentials({ access_token: accessToken });
     const youtubeClient = youtube(client);
 
