@@ -29,6 +29,8 @@ COPY apps/orchestrator/package.json ./apps/orchestrator/
 COPY apps/commands/package.json ./apps/commands/
 COPY apps/extension/package.json ./apps/extension/
 COPY apps/sdk/package.json ./apps/sdk/
+# Prisma postinstall script needs the schema file to run prisma generate
+COPY libraries/nestjs-libraries/src/database/prisma/schema.prisma ./libraries/nestjs-libraries/src/database/prisma/
 
 RUN pnpm install --frozen-lockfile
 
