@@ -133,9 +133,15 @@ export const MenuGroupComponent: FC<
     changeItemGroup,
     collapsed,
   } = props;
-  const [isOpen, setIsOpen] = useState(
-    !!+(localStorage.getItem(group.name + '_isOpen') || '1')
-  );
+  const [isOpen, setIsOpen] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    setIsOpen(!!+(localStorage.getItem(group.name + '_isOpen') || '1'));
+  }, [group.name]);
   const changeOpenClose = useCallback(
     (e: any) => {
       setIsOpen(!isOpen);

@@ -28,6 +28,7 @@ import { AuthService } from '@gitroom/helpers/auth/auth.service';
 export class XProvider extends SocialAbstract implements SocialProvider {
   identifier = 'x';
   name = 'X';
+  requiresOrganizationOAuthApp = true;
   isBetweenSteps = false;
   scopes = [] as string[];
   override maxConcurrentJob = 1; // X has strict rate limits (300 posts per 3 hours)

@@ -16,6 +16,7 @@ import { Integration } from '@prisma/client';
 export class FacebookProvider extends SocialAbstract implements SocialProvider {
   identifier = 'facebook';
   name = 'Facebook Page';
+  requiresOrganizationOAuthApp = true;
   isBetweenSteps = true;
   scopes = [
     'pages_show_list',

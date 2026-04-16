@@ -32,6 +32,9 @@ import {
 } from '@gitroom/backend/services/auth/permissions/permission.exception.class';
 import { uniqBy } from 'lodash';
 import { RefreshIntegrationService } from '@gitroom/nestjs-libraries/integrations/refresh.integration.service';
+import { OrganizationOAuthAppService } from '@gitroom/nestjs-libraries/database/prisma/organization-oauth/organization-oauth.service';
+import { OAuthAppUpsertDto } from '@gitroom/nestjs-libraries/dtos/oauth-apps/oauth-app.dto';
+import { socialIntegrationList } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 
 @ApiTags('Integrations')
 @Controller('/integrations')
@@ -40,7 +43,8 @@ export class IntegrationsController {
     private _integrationManager: IntegrationManager,
     private _integrationService: IntegrationService,
     private _postService: PostsService,
-    private _refreshIntegrationService: RefreshIntegrationService
+    private _refreshIntegrationService: RefreshIntegrationService,
+    private _organizationOAuthAppService: OrganizationOAuthAppService
   ) {}
 
   @Post('/provider/:id/connect')
@@ -234,6 +238,30 @@ export class IntegrationsController {
         }
       }
 
+      // Per-organization OAuth app credentials (strict tenant isolation)
+      const orgOAuthApp = await this._organizationOAuthAppService.get(
+        org.id,
+        integration
+      );
+
+      // Strict mode: provider requires per-org OAuth app, but org has none configured
+      // and no transient credentials supplied (custom params or refresh-stored). Block connect.
+      if (
+        integrationProvider.requiresOrganizationOAuthApp &&
+        !orgOAuthApp &&
+        !(customClientId && customClientSecret) &&
+        !(storedClientInfo?.client_id && storedClientInfo?.client_secret)
+      ) {
+        return {
+          err: true,
+          code: 'OAUTH_APP_NOT_CONFIGURED',
+          message: `OAuth app for ${integrationProvider.name.replace(
+            /\n/g,
+            ' '
+          )} is not configured for this organization`,
+        };
+      }
+
       const getExternalUrl = integrationProvider.externalUrl
         ? {
             ...(await integrationProvider.externalUrl(externalUrl)),
@@ -245,6 +273,8 @@ export class IntegrationsController {
             client_secret: customClientSecret,
             instanceUrl: '',
           }
+        : orgOAuthApp
+        ? orgOAuthApp
         : storedClientInfo?.client_id && storedClientInfo?.client_secret
         ? storedClientInfo
         : undefined;
@@ -275,6 +305,59 @@ export class IntegrationsController {
     } catch (err) {
       return { err: true };
     }
+  }
+
+  @Get('/oauth-apps')
+  async listOAuthApps(@GetOrgFromRequest() org: Organization) {
+    const configured = await this._organizationOAuthAppService.listSummary(
+      org.id
+    );
+    const configuredMap = new Map(
+      configured.map((c) => [c.providerIdentifier, c])
+    );
+    return socialIntegrationList
+      .filter((p) => (p as any).requiresOrganizationOAuthApp === true)
+      .map((p) => {
+        const c = configuredMap.get(p.identifier);
+        return {
+          providerIdentifier: p.identifier,
+          providerName: p.name,
+          configured: !!c,
+          clientIdMasked: c?.clientIdMasked,
+          updatedAt: c?.updatedAt,
+        };
+      });
+  }
+
+  @Post('/oauth-apps/:providerIdentifier')
+  @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  async upsertOAuthApp(
+    @GetOrgFromRequest() org: Organization,
+    @Param('providerIdentifier') providerIdentifier: string,
+    @Body() body: OAuthAppUpsertDto
+  ) {
+    const provider = this._integrationManager.getSocialIntegration(
+      providerIdentifier
+    );
+    if (!provider || !(provider as any).requiresOrganizationOAuthApp) {
+      return { err: true, message: 'Provider does not support per-organization OAuth credentials' };
+    }
+    await this._organizationOAuthAppService.upsert(org.id, providerIdentifier, {
+      clientId: body.clientId,
+      clientSecret: body.clientSecret,
+      additionalConfig: body.additionalConfig,
+    });
+    return { success: true };
+  }
+
+  @Delete('/oauth-apps/:providerIdentifier')
+  @CheckPolicies([AuthorizationActions.Create, Sections.CHANNEL])
+  async deleteOAuthApp(
+    @GetOrgFromRequest() org: Organization,
+    @Param('providerIdentifier') providerIdentifier: string
+  ) {
+    await this._organizationOAuthAppService.delete(org.id, providerIdentifier);
+    return { success: true };
   }
 
   @Post('/:id/time')

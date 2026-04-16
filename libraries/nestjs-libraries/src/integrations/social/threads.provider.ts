@@ -18,6 +18,7 @@ import { stripHtmlValidation } from '@gitroom/helpers/utils/strip.html.validatio
 export class ThreadsProvider extends SocialAbstract implements SocialProvider {
   identifier = 'threads';
   name = 'Threads';
+  requiresOrganizationOAuthApp = true;
   isBetweenSteps = false;
   scopes = [
     'threads_basic',

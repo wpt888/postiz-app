@@ -679,6 +679,30 @@ export const AddProviderComponent: FC<{
           });
           return;
         }
+        if (oauthCustomFields) {
+          modal.openModal({
+            title: t('custom_oauth_credentials', 'OAuth App Credentials'),
+            withCloseButton: true,
+            classNames: {
+              modal: 'bg-transparent text-textColor',
+            },
+            children: (
+              <OAuthCustomCredentials
+                identifier={identifier}
+                variables={oauthCustomFields}
+                onSubmit={async (creds) => {
+                  modal.closeAll();
+                  await gotoIntegration(undefined, creds);
+                }}
+                onSkip={async () => {
+                  modal.closeAll();
+                  await gotoIntegration();
+                }}
+              />
+            ),
+          });
+          return;
+        }
         await gotoIntegration();
       },
     [onboarding]

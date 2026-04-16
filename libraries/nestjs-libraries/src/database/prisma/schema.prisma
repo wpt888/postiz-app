@@ -42,6 +42,7 @@ model Organization {
   users               UserOrganization[]
   webhooks            Webhooks[]
   oauthApp            OAuthApp[]
+  oauthApps           OrganizationOAuthApp[]
   oauthAuthorizations OAuthAuthorization[]
 
   @@index([apiKey])
@@ -294,6 +295,23 @@ model Subscription {
   deletedAt        DateTime?
   organization     Organization     @relation(fields: [organizationId], references: [id])
 
+  @@index([organizationId])
+  @@index([deletedAt])
+}
+
+model OrganizationOAuthApp {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  providerIdentifier String
+  clientId           String
+  clientSecret       String
+  additionalConfig   String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  deletedAt          DateTime?
+
+  @@unique([organizationId, providerIdentifier])
   @@index([organizationId])
   @@index([deletedAt])
 }

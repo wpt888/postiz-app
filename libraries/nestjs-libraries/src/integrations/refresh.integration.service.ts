@@ -9,6 +9,7 @@ import {
 } from '@gitroom/nestjs-libraries/integrations/social/social.integrations.interface';
 import { AuthService } from '@gitroom/helpers/auth/auth.service';
 import { TemporalService } from 'nestjs-temporal-core';
+import { OrganizationOAuthAppService } from '@gitroom/nestjs-libraries/database/prisma/organization-oauth/organization-oauth.service';
 
 @Injectable()
 export class RefreshIntegrationService {
@@ -16,7 +17,8 @@ export class RefreshIntegrationService {
     private _integrationManager: IntegrationManager,
     @Inject(forwardRef(() => IntegrationService))
     private _integrationService: IntegrationService,
-    private _temporalService: TemporalService
+    private _temporalService: TemporalService,
+    private _organizationOAuthAppService: OrganizationOAuthAppService
   ) {}
   async refresh(integration: Integration, cause = ''): Promise<false | AuthTokenDetails> {
     const socialProvider = this._integrationManager.getSocialIntegration(
@@ -82,12 +84,25 @@ export class RefreshIntegrationService {
     }
   }
 
+  private async resolveClientInformation(
+    integration: Integration
+  ): Promise<ClientInformation | undefined> {
+    const orgCredentials = await this._organizationOAuthAppService.get(
+      integration.organizationId,
+      integration.providerIdentifier
+    );
+    if (orgCredentials) {
+      return orgCredentials;
+    }
+    return this.getClientInformation(integration);
+  }
+
   private async refreshProcess(
     integration: Integration,
     socialProvider: SocialProvider,
     cause = ''
   ): Promise<AuthTokenDetails | false> {
-    const clientInformation = this.getClientInformation(integration);
+    const clientInformation = await this.resolveClientInformation(integration);
     const refresh: false | AuthTokenDetails = await socialProvider
       .refreshToken(integration.refreshToken, clientInformation)
       .catch((err) => false);

@@ -166,6 +166,7 @@ export interface SocialProvider
       type: 'text' | 'password';
     }[]
   >;
+  requiresOrganizationOAuthApp?: boolean;
   name: string;
   toolTip?: string;
   oneTimeToken?: boolean;

@@ -56,6 +56,7 @@ export class YoutubeProvider extends SocialAbstract implements SocialProvider {
   override maxConcurrentJob = 200; // YouTube has strict upload quotas
   identifier = 'youtube';
   name = 'YouTube';
+  requiresOrganizationOAuthApp = true;
   isBetweenSteps = true;
   dto = YoutubeSettingsDto;
   scopes = [
