@@ -4,6 +4,8 @@ services:
       context: .
     container_name: postiz
     restart: always
+    expose:
+      - '5000'
     environment:
       # === URLs - set these in Coolify
       MAIN_URL: '${MAIN_URL}'
