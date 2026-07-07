@@ -104,7 +104,7 @@ services:
       postiz-redis:
         condition: service_healthy
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:5000/']
+      test: ['CMD-SHELL', 'node -e "require(''http'').get(''http://127.0.0.1:5000/'',r=>process.exit(r.statusCode<500?0:1)).on(''error'',()=>process.exit(1))"']
       interval: 5s
       timeout: 20s
       retries: 10
@@ -179,6 +179,7 @@ services:
   temporal:
     container_name: temporal
     image: temporalio/auto-setup:1.28.1
+    user: root
     depends_on:
       - temporal-postgresql
       - temporal-elasticsearch
